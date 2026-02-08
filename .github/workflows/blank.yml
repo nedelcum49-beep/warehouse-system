@@ -1,0 +1,107 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+
+      # Runs a single command using the runners shell
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+      # Runs a set of commands using the runners shell
+      - name: Run a multi-line script
+        run: |npm install gh-pages --save-dev
+"homepage": "https://yourname.github.io/yourrepo",
+"scripts": {
+  "predeploy": "npm run build",
+  "deploy": "gh-pages -d build"
+}
+npm run deploy
+git init
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/YOURNAME/YOURREPO.git
+git push -u origin main
+REACT_APP_API_URL=https://your-backend.com
+npm install gh-pages --save-dev
+"homepage": "https://marius.github.io/YOURREPO",
+"scripts": {
+  "predeploy": "npm run build",
+  "deploy": "gh-pages -d build"
+}
+npm run deploy
+https://YOURNAME.github.io/YOURREPO
+public/_redirects
+/*    /index.html   200
+your-project/
+│
+├── frontend/              # React app (Vercel deploy)
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   ├── App.jsx
+│   │   └── index.jsx
+│   ├── package.json
+│   ├── vite.config.js     # or CRA config
+│   └── README.md
+│
+├── backend/               # FastAPI app (deploy anywhere)
+│   ├── api/
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── crud.py
+│   │   │   ├── models.py
+│   │   │   ├── deps.py
+│   │   │   ├── zpl.py
+│   │   │   └── __init__.py
+│   ├── alembic/
+│   ├── alembic.ini
+│   ├── requirements.txt
+│   └── README.md
+│
+└── README.md              # Root documentation
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build"
+    }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/" }
+  ]
+}
+git init
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/YOURNAME/YOURREPO.git
+git push -u origin main
+/frontend
+          echo Add other actions to build,
+          echo test, and deploy your project.
