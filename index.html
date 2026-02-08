@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Trailer Tracker Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    
+    <!-- Firebase SDK Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, getDoc, collection, query, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // ==========================================================
+        // STEP 1: PASTE YOUR FIREBASE CONFIG KEYS BELOW
+        // ==========================================================
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // ==========================================================
+        // APP LOGIC
+        // ==========================================================
+        
+        // Create or Load Trailer
+        window.createNewTrailer = async () => {
+            const id = document.getElementById('new-trailer-name').value.trim().toUpperCase();
+            if (!id) return alert("Please enter a Trailer Number.");
+            
+            const trailerRef = doc(db, "trailers", id);
+            const snap = await getDoc(trailerRef);
+            
+            if (!snap.exists()) {
+                await setDoc(trailerRef, {
+                    id: id,
+                    pallets: [],
+                    status: 'Open',
+                    createdAt: new Date().toLocaleString(),
+                    logs: [`Trailer created on ${new Date().toLocaleString()}`]
+                });
+            }
+            openTrailer(id);
+        };
+
+        // Open specific trailer and start real-time sync
+        window.openTrailer = (id) => {
+            document.getElementById('setup-view').style.display = 'none';
+            document.getElementById('active-trailer-view').style.display = 'block';
+            document.getElementById('nav-controls').style.display = 'block';
+            
+            // This listens for changes from ANY device and updates the screen instantly
+            onSnapshot(doc(db, "trailers", id), (doc) => {
+                if(doc.exists()) renderActiveTrailer(doc.data());
+            });
+        };
+
+        // Go back to main screen
+        window.goHome = () => {
+            location.reload(); 
+        };
+
+        // Process a pallet scan
+        window.processScan = async () => {
+            const input = document.getElementById('pallet-input');
+            const palletId = input.value.trim().toUpperCase();
+            const trailerId = document.getElementById('current-trailer-id').innerText;
+            if (!palletId) return;
+
+            const trailerRef = doc(db, "trailers", trailerId);
+            const snap = await getDoc(trailerRef);
+            const data = snap.data();
+
+            if (data.status === 'Closed') {
+                alert("Trailer is locked.");
+                return;
+            }
+
+            if (data.pallets.length >= 26) {
+                alert("Capacity Reached (26 Pallets Max)");
+                input.value = '';
+                return;
+            }
+
+            // Check if pallet exists elsewhere (Global Transfer Logic)
+            // Note: In a production environment, you would query the collection for this pallet ID.
+            // For this version, we will proceed with the add:
+            if (data.pallets.includes(palletId)) {
+                alert("Duplicate: Pallet already in this trailer.");
+            } else {
+                await updateDoc(trailerRef, {
+                    pallets: arrayUnion(palletId),
+                    logs: arrayUnion(`[${new Date().toLocaleTimeString()}] Added Pallet: ${palletId}`)
+                });
+            }
+
+            input.value = '';
+            input.focus();
+        };
+
+        // Close Trailer
+        window.closeTrailer = async () => {
+            const trailerId = document.getElementById('current-trailer-id').innerText;
+            if (confirm("Are you sure? This locks the trailer data for checks.")) {
+                await updateDoc(doc(db, "trailers", trailerId), {
+                    status: 'Closed',
+                    logs: arrayUnion(`TRAILER CLOSED/LOCKED at ${new Date().toLocaleString()}`)
+                });
+            }
+        };
+
+        // UI Rendering
+        function renderActiveTrailer(data) {
+            document.getElementById('current-trailer-id').innerText = data.id;
+            document.getElementById('pallet-count').innerText = data.pallets.length;
+            
+            const statusEl = document.getElementById('trailer-status');
+            statusEl.innerText = data.status;
+            statusEl.className = 'status-badge ' + data.status.toLowerCase();
+            
+            document.getElementById('scan-zone').style.display = data.status === 'Open' ? 'block' : 'none';
+            document.getElementById('closed-zone').style.display = data.status === 'Closed' ? 'block' : 'none';
+
+            // Generate Barcode for the Trailer
+            JsBarcode("#trailer-barcode", data.id, { format: "CODE128", width: 2, height: 60, displayValue: true });
+
+            // Update Pallet List
+            const listEl = document.getElementById('pallet-list');
+            listEl.innerHTML = data.pallets.map(p => `<div class="pallet-card">${p}</div>`).join('');
+
+            // Update Audit Log
+            const logEl = document.getElementById('history-log');
+            logEl.innerHTML = data.logs.slice().reverse().map(l => `<div>> ${l}</div>`).join('');
+        }
+
+        // CSV Export for Admin
+        window.exportToCSV = async () => {
+            const trailerId = document.getElementById('current-trailer-id').innerText;
+            const snap = await getDoc(doc(db, "trailers", trailerId));
+            const t = snap.data();
+            
+            let csv = "Trailer ID,Pallet ID,Date Scanned\n";
+            t.pallets.forEach(p => {
+                csv += `${t.id},${p},${t.createdAt}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', `Audit_Report_${t.id}.csv`);
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+
+        // Listen for Hardware Scanner "Enter"
+        document.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter' && document.activeElement.id === 'pallet-input') {
+                processScan();
+            }
+        });
+    </script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 15px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h2, h3 { color: #1a202c; text-align: center; }
+        .input-row { display: flex; gap: 10px; margin-bottom: 20px; }
+        input { flex: 1; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; outline: none; }
+        input:focus { border-color: #3182ce; }
+        button { padding: 12px 20px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: 0.2s; }
+        button.primary { background: #3182ce; color: white; }
+        button.secondary { background: #718096; color: white; }
+        button.success { background: #38a169; color: white; }
+        button.danger { background: #e53e3e; color: white; }
+        button:hover { opacity: 0.9; }
+        .status-badge { float: right; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .open { background: #c6f6d5; color: #22543d; }
+        .closed { background: #fed7d7; color: #822727; }
+        .barcode-svg { display: block; margin: 20px auto; border: 1px solid #edf2f7; border-radius: 8px; padding: 10px; }
+        .pallet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 20px; }
+        .pallet-card { background: #f7fafc; border: 1px solid #e2e8f0; padding: 10px; text-align: center; border-radius: 6px; font-size: 14px; font-weight: bold; color: #2d3748; }
+        .log-box { background: #2d3748; color: #68d391; padding: 15px; border-radius: 8px; height: 120px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 12px; margin-top: 20px; }
+        #nav-controls { text-align: center; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="nav-controls" style="display:none;">
+        <button class="secondary" onclick="goHome()">← Switch/New Trailer</button>
+    </div>
+
+    <!-- START SCREEN -->
+    <div id="setup-view">
+        <h2>Warehouse Scanner</h2>
+        <p style="text-align:center; color:#718096;">Enter a Trailer ID to begin or sync</p>
+        <div class="input-row">
+            <input type="text" id="new-trailer-name" placeholder="Trailer Number (e.g. TR-99)">
+            <button class="primary" onclick="createNewTrailer()">Go</button>
+        </div>
+    </div>
+
+    <!-- ACTIVE SCANNING SCREEN -->
+    <div id="active-trailer-view" style="display:none;">
+        <span id="trailer-status" class="status-badge"></span>
+        <h3>Trailer: <span id="current-trailer-id"></span></h3>
+        
+        <svg id="trailer-barcode" class="barcode-svg"></svg>
+        
+        <div id="scan-zone">
+            <p style="text-align:center">Pallet Load: <strong id="pallet-count">0</strong> / 26</p>
+            <div class="input-row">
+                <input type="text" id="pallet-input" placeholder="Scan Pallet Barcode...">
+                <button class="primary" onclick="processScan()">Add</button>
+            </div>
+            <button class="danger" style="width:100%" onclick="closeTrailer()">Close & Lock Trailer</button>
+        </div>
+
+        <div id="closed-zone" style="display:none; text-align: center;">
+            <p style="color: #e53e3e; font-weight: bold; font-size: 18px;">🔒 TRAILER LOCKED</p>
+            <button class="success" style="width:100%; margin-bottom: 10px;" onclick="exportToCSV()">Download Audit CSV</button>
+        </div>
+
+        <div class="pallet-grid" id="pallet-list"></div>
+        
+        <div class="log-box" id="history-log"></div>
+    </div>
+</div>
+
+</body>
+</html>
+
